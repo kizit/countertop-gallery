@@ -1,0 +1,9 @@
+{
+ "countertop": "effect",
+ "format": 1,
+ "name": "Pumpkin patch",
+ "description": "Pumpkins, candy and the odd bat drift down through October.",
+ "made": "2026-11-22",
+ "effect": {"glyphs": ["🎃", "🍬", "🦇"], "motion": "fall", "size": "Big", "speed": "Slow", "spin": true, "from": "10-1", "to": "10-31"},
+ "gallery": {"author": "kizit", "version": 1, "updated": "2026-11-22"}
+}
