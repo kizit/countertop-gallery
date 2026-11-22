@@ -1,0 +1,55 @@
+# A submission issue becomes a pull request with the item, ready for review.
+# The issue text is untrusted: it only reaches scripts/gallery.py through environment variables.
+name: Submission
+on:
+  issues:
+    types: [opened, edited]
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+concurrency:
+  group: submission-${{ github.event.issue.number }}
+  cancel-in-progress: true
+jobs:
+  submit:
+    if: contains(github.event.issue.labels.*.name, 'submission') && github.event.issue.state == 'open'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check the submission
+        env:
+          BODY: ${{ github.event.issue.body }}
+          AUTHOR: ${{ github.event.issue.user.login }}
+        run: python3 scripts/gallery.py submit "$RUNNER_TEMP/result.json"
+      - name: Open or update the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTHOR: ${{ github.event.issue.user.login }}
+          NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          R="$RUNNER_TEMP/result.json"
+          MSG=$(jq -r .message "$R")
+          if [ "$(jq -r .ok "$R")" != "true" ]; then
+            gh issue comment "$NUMBER" --repo "$REPO" --body "$MSG
+
+          Edit this issue to try again; it's checked again on every edit."
+            exit 0
+          fi
+          BRANCH="submission/$NUMBER"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add "$(jq -r .path "$R")"
+          git commit -m "$(jq -r .title "$R")" -m "From #$NUMBER."
+          git push --force origin "$BRANCH"
+          if gh pr view "$BRANCH" --repo "$REPO" >/dev/null 2>&1; then
+            gh issue comment "$NUMBER" --repo "$REPO" --body "Updated the pull request with your changes."
+          else
+            gh pr create --repo "$REPO" --head "$BRANCH" --base main --title "$(jq -r .title "$R")" --body "Closes #$NUMBER. Submitted by @$AUTHOR. Check the preview in Countertop: copy the code from the issue into Library → Import a file."
+            gh issue comment "$NUMBER" --repo "$REPO" --body "$MSG"
+          fi

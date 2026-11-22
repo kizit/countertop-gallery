@@ -1,0 +1,9 @@
+{
+ "countertop": "theme",
+ "format": 1,
+ "name": "Calm evening",
+ "description": "Warmer and a little dimmer, with see-through tiles and no effects. Made for after dinner.",
+ "made": "2026-11-22",
+ "values": {"mode": "Dark", "accent": "#ff9f5a", "tiles": "See-through", "opacity": 55, "bg": "Sky", "dim": 30, "fx": "Off"},
+ "gallery": {"author": "kizit", "version": 1, "updated": "2026-11-22"}
+}

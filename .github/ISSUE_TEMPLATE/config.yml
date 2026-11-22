@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Countertop itself
+    url: https://github.com/kizit/countertop/issues
+    about: Bugs and ideas for the Countertop app go in its own repository.

@@ -1,0 +1,36 @@
+name: Submit to the gallery
+description: Share a layout, theme or effect you made with everyone who uses Countertop.
+title: "Submit: "
+labels: ["submission"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        In Countertop, open what you want to share and press **Share**, then **Copy share code**:
+        - a layout: Library → Share a layout
+        - a theme: Library → Themes → your theme → Share
+        - an effect you made: Library → Effects → your effect → Share
+
+        Paste the code below. It's checked right away, and a pull request opens for review. Once it's merged, it shows up in Library → Community.
+  - type: textarea
+    id: code
+    attributes:
+      label: Share code
+      description: Starts with CT1. You can also paste the text of a .countertop file.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: desc
+    attributes:
+      label: What it's for
+      description: Optional. One or two sentences shown in Community. Leave empty to use the description from the code.
+    validations:
+      required: false
+  - type: checkboxes
+    id: ok
+    attributes:
+      label: Permission
+      options:
+        - label: I made this (or may share it), it has nothing private in it, and it can be shared under the MIT license.
+          required: true
