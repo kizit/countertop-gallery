@@ -6,7 +6,9 @@
     python3 scripts/gallery.py submit result.json reads a submission issue (env BODY, AUTHOR, NUMBER) and writes its item
 
 Items are the same .countertop files Countertop shares (Library > Share, or Share on a theme or effect),
-plus a "gallery" block: {"author": GitHub login, "version": n, "updated": "YYYY-MM-DD"}.
+plus a "gallery" block: {"author": GitHub login, "version": n, "updated": "YYYY-MM-DD"}. A tile is a .countertop file
+with "countertop": "tile" (its manifest and its code); it may have a screenshot beside it, items/tiles/<id>.png or .jpg.
+Tile code is only ever read and published here, never run.
 Countertop checks everything again when someone downloads an item; these checks keep the gallery tidy
 and catch problems before review. Only the standard library is used.
 """
@@ -21,10 +23,12 @@ import sys
 
 ROOT = Path(__file__).resolve().parent.parent
 ITEMS = ROOT / "items"
-KINDS = {"layout": "layouts", "theme": "themes", "effect": "effects"}
+KINDS = {"layout": "layouts", "theme": "themes", "effect": "effects", "tile": "tiles"}
 FORMAT = 1                     # the newest .countertop format Countertop reads
 MAX_BYTES = 64 * 1024
-NO_CODE_TILES = {"custom"}     # tiles that run their own code wait for the tile sandbox
+MAX_TILE_BYTES = 96 * 1024     # a tile's code may be up to 64 KB, plus its manifest
+MAX_SHOT_BYTES = 600_000       # Countertop skips bigger screenshots
+NO_CODE_TILES = {"custom"}     # "Your own tile" runs code that never went through the gallery; community tiles replace it
 
 # the theme settings a theme (or a layout's look) may hold, as in Countertop's settings schema
 LOOK = {
@@ -118,13 +122,209 @@ def clean_setting(x):
     return False
 
 
+# ---- community tiles: the same rules Countertop applies when it downloads one (tools/server/sandbox.py in the app) ----
+# Countertop checks every tile again, so a copy that drifts from the app is caught there. This is the first, friendlier check.
+TILE_ID = re.compile(r"^[a-z][a-z0-9-]{1,39}$")
+SLOT = re.compile(r"^[a-z][a-z0-9_]{0,19}$")
+SETTING_KEY = re.compile(r"^[A-Za-z_]\w{0,30}$")
+FEEDS = ("wx", "aqi", "events", "notes", "team", "photos", "sales")
+PERSONAL_FEEDS = ("events", "notes", "photos", "sales")      # personal data or the internet, never both
+USES = ("store", "fetch", "events", "sources", "feed")
+SETTING_TYPES = ("bool", "int", "number", "text", "list", "choice", "color", "source", "secret")
+SOURCE_KINDS = {"calendars": "events", "teams": "team", "lists": "notes", "albums": "photos"}
+MAX_CODE = 64 * 1024
+MAX_DEVICES, MAX_CONTROLS, MAX_SECRETS = 8, 12, 3
+SECURE_DOMAINS = ("lock", "alarm_control_panel", "cover")
+HOST = re.compile(r"^(\*\.)?(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$")
+HEADER = re.compile(r"^[A-Za-z][A-Za-z0-9-]{0,39}$")
+QUERY = re.compile(r"^[A-Za-z0-9_.-]{1,40}$")
+PREFIX = re.compile(r"^[\x20-\x7e]{0,20}$")
+REFUSED_HEADERS = {"host", "content-length", "transfer-encoding", "connection", "keep-alive", "te", "upgrade", "expect",
+                   "cookie", "user-agent", "accept", "accept-encoding", "proxy-authorization", "proxy-connection",
+                   "forwarded", "x-forwarded-for", "x-forwarded-host", "x-real-ip", "origin", "referer"}
+# what the buttons of a control tile may do (Home Assistant kinds and their actions)
+HA_ACTIONS = {
+    "light": {"toggle", "turn_on", "turn_off"}, "switch": {"toggle", "turn_on", "turn_off"},
+    "fan": {"toggle", "turn_on", "turn_off", "set_percentage"}, "input_boolean": {"toggle", "turn_on", "turn_off"},
+    "scene": {"turn_on"}, "script": {"turn_on"},
+    "climate": {"toggle", "turn_on", "turn_off", "set_temperature", "set_hvac_mode"},
+    "water_heater": {"toggle", "turn_on", "turn_off", "set_temperature", "set_away_mode", "set_operation_mode"},
+    "cover": {"toggle", "open_cover", "close_cover", "stop_cover", "set_cover_position"},
+    "lock": {"lock", "unlock", "open"},
+    "media_player": {"toggle", "media_play_pause", "media_play", "media_pause", "media_stop", "media_next_track",
+                     "media_previous_track", "volume_set", "volume_up", "volume_down"},
+    "vacuum": {"start", "pause", "stop", "return_to_base", "toggle"},
+    "alarm_control_panel": {"disarm", "arm_home", "arm_away", "arm_night", "arm_vacation"},
+    "number": {"set_value"}, "input_number": {"set_value"},
+    "select": {"select_option", "select_next", "select_previous"}, "input_select": {"select_option", "select_next", "select_previous"},
+    "text": {"set_value"}, "input_text": {"set_value"}, "button": {"press"}, "input_button": {"press"},
+}
+HA_DATA_KEYS = {"temperature", "hvac_mode", "operation_mode", "away_mode", "brightness_pct", "brightness",
+                "percentage", "position", "volume_level", "code", "value", "option"}
+# tiles that come with Countertop: a community tile can't take their id
+BUILTIN_TILES = {"agenda", "cam", "clock", "countdown", "custom", "daily", "dinner", "forecast", "ha", "hasensor", "hourly", "image",
+                 "inseason", "iss", "joke", "list", "month", "nextevent", "nexthours", "nightclock", "note", "onthisday", "photos",
+                 "planes", "radar", "sales", "space", "stocks", "sunmoon", "team", "tempo", "timeline", "tip", "weather", "week", "worldclock"}
+
+
+def plain(v, depth=0):
+    """JSON values only, cut down to a sensible size (as Countertop does)."""
+    if isinstance(v, bool) or v is None or isinstance(v, int):
+        return v
+    if isinstance(v, float):
+        return v if v == v and abs(v) < 1e15 else None
+    if isinstance(v, str):
+        return v[:4000]
+    if depth < 6 and isinstance(v, list):
+        return [plain(x, depth + 1) for x in v[:200]]
+    if depth < 6 and isinstance(v, dict):
+        return {str(k)[:60]: plain(x, depth + 1) for k, x in list(v.items())[:200]}
+    return None
+
+
+def clean_hosts(v):
+    out = []
+    for h in v if isinstance(v, (list, tuple)) else []:
+        h = str(h).strip().lower().rstrip(".")
+        if HOST.match(h) and h not in out:
+            out.append(h)
+    return out[:10]
+
+
+def host_allowed(host, hosts):
+    for h in hosts:
+        if h == host or (h.startswith("*.") and host.endswith(h[1:]) and "." not in host[:-len(h) + 1]):
+            return True
+    return False
+
+
+def clean_secret(name, s, hosts):
+    host = str(s.get("host") or "").strip().lower().rstrip(".")
+    if not HOST.match(host) or host.startswith("*."):
+        raise Bad("setting %s must name the one site its key is sent to, like api.example.com" % name)
+    if not host_allowed(host, hosts):
+        raise Bad("setting %s sends its key to %s, which isn't one of the tile's hosts" % (name, host))
+    header, query = s.get("header"), s.get("query")
+    if (header is None) == (query is None):
+        raise Bad("setting %s must say how its key is sent: a header or a query" % name)
+    out = {"type": "secret", "label": text(s.get("label") or name, 60), "help": text(s.get("help"), 300), "host": host}
+    if header is not None:
+        if not isinstance(header, str) or not HEADER.match(header) or header.lower() in REFUSED_HEADERS:
+            raise Bad("setting %s can't send its key in that header" % name)
+        prefix = s.get("prefix") or ""
+        if not isinstance(prefix, str) or not PREFIX.match(prefix):
+            raise Bad("setting %s has a prefix that can't be sent" % name)
+        out.update(header=header, prefix=prefix)
+    else:
+        if not isinstance(query, str) or not QUERY.match(query):
+            raise Bad("setting %s can't send its key as that part of the address" % name)
+        out["query"] = query
+    return out
+
+
+def clean_controls(pkg):
+    rd, rc = pkg.get("devices"), pkg.get("controls")
+    if rd is None and rc is None:
+        return {}, []
+    if not isinstance(rd, dict) or not rd or len(rd) > MAX_DEVICES:
+        raise Bad("devices must list 1 to %d kinds of thing the tile controls" % MAX_DEVICES)
+    devices = {}
+    for k, d in rd.items():
+        if not SLOT.match(str(k)) or not isinstance(d, dict):
+            raise Bad("device %s needs a short lower-case name" % str(k)[:20])
+        doms = d.get("domains")
+        if not isinstance(doms, list) or not doms or not all(isinstance(x, str) and x in HA_ACTIONS for x in doms):
+            raise Bad("device %s must list the Home Assistant kinds it works with, like light or switch" % k)
+        devices[k] = {"label": text(d.get("label") or k, 40), "domains": sorted(set(doms))}
+    if not isinstance(rc, list) or not rc or len(rc) > MAX_CONTROLS:
+        raise Bad("controls must list 1 to %d buttons" % MAX_CONTROLS)
+    controls, seen = [], set()
+    for c in rc:
+        if not isinstance(c, dict) or not SLOT.match(str(c.get("id") or "")) or c["id"] in seen:
+            raise Bad("each control needs its own short lower-case id")
+        seen.add(c["id"])
+        dev = devices.get(str(c.get("device") or ""))
+        if not dev:
+            raise Bad("control %s names a device the tile doesn't list" % c["id"])
+        action = c.get("action")
+        if not isinstance(action, str) or not all(action in HA_ACTIONS[x] for x in dev["domains"]):
+            raise Bad("control %s: %s isn't something every kind of thing in its device can do" % (c["id"], str(action)[:30]))
+        data = c.get("data") if c.get("data") is not None else {}
+        if not isinstance(data, dict) or any(k not in HA_DATA_KEYS or k == "code" or not isinstance(v, (int, float, str, bool)) or
+                                             (isinstance(v, str) and len(v) > 60) for k, v in data.items()):
+            raise Bad("control %s sends data Countertop doesn't pass on" % c["id"])
+        controls.append({"id": c["id"], "device": c["device"], "action": action, "data": dict(data)})
+    return devices, controls
+
+
+def check_tile(pkg):
+    """A clean copy of a tile's manifest and code, or Bad. Everything Countertop would refuse is refused here too."""
+    tid = pkg.get("id")
+    if not isinstance(tid, str) or not TILE_ID.match(tid):
+        raise Bad("A tile's id must be 2 to 40 lower-case letters, digits or dashes.")
+    if tid in BUILTIN_TILES:
+        raise Bad("The id %s is the same as a tile that comes with Countertop. Pick another." % tid)
+    code = pkg.get("code")
+    if not isinstance(code, str) or not code.strip():
+        raise Bad("This tile has no code.")
+    if len(code.encode("utf-8")) > MAX_CODE:
+        raise Bad("The tile's code is larger than %d KB." % (MAX_CODE // 1024))
+    size = pkg.get("size") if isinstance(pkg.get("size"), list) else [12, 8, 8, 6]
+    if len(size) != 4 or not all(isinstance(n, int) and not isinstance(n, bool) and 2 <= n <= 48 for n in size):
+        raise Bad("size must be [width, height, min width, min height] on the 48 by 32 grid.")
+    feeds = pkg.get("feeds") if isinstance(pkg.get("feeds"), list) else []
+    if [f for f in feeds if f not in FEEDS]:
+        raise Bad("It asks for data that doesn't exist: %s." % ", ".join(str(f) for f in feeds if f not in FEEDS)[:80])
+    feeds = list(dict.fromkeys(feeds))
+    hosts = clean_hosts(pkg.get("hosts"))
+    if isinstance(pkg.get("hosts"), list) and len(hosts) != len(pkg["hosts"]):
+        raise Bad("Its hosts must be public names like api.example.com, not addresses, ports or paths (at most 10).")
+    settings = {}
+    raw_settings = pkg.get("settings")
+    if raw_settings is not None and not isinstance(raw_settings, dict):
+        raise Bad("settings aren't readable.")
+    for k, s in (raw_settings or {}).items():
+        if not SETTING_KEY.match(str(k)) or not isinstance(s, dict) or s.get("type") not in SETTING_TYPES:
+            raise Bad("Setting %s isn't one Countertop knows." % str(k)[:30])
+        if s["type"] == "source" and SOURCE_KINDS.get(s.get("kind")) not in feeds:
+            raise Bad("Setting %s picks %s, which needs the matching data in feeds." % (k, str(s.get("kind"))[:20]))
+        settings[k] = plain(s)
+    devices, controls = clean_controls(pkg)
+    personal = [f for f in feeds if f in PERSONAL_FEEDS] + (["devices"] if devices else [])
+    if personal and hosts:
+        raise Bad("A tile that reads personal data (%s) can't also read from sites. Take out the hosts or the data." % ", ".join(personal))
+    keys = [k for k, s in settings.items() if s.get("type") == "secret"]
+    if len(keys) > MAX_SECRETS:
+        raise Bad("It asks for more than %d keys." % MAX_SECRETS)
+    for k in keys:
+        settings[k] = clean_secret(k, settings[k], hosts)
+    uses = pkg.get("uses") if isinstance(pkg.get("uses"), list) else []
+    out = {"countertop": "tile", "id": tid, "name": "", "description": "", "size": size}
+    out["uses"] = [u for u in USES if u in uses]
+    out["feeds"] = feeds
+    out["hosts"] = hosts
+    out["taps"] = pkg.get("taps") is True
+    every = pkg.get("every")
+    out["every"] = every if isinstance(every, int) and not isinstance(every, bool) and 1 <= every <= 86400 else 0
+    out["settings"] = settings
+    if devices:
+        out["devices"], out["controls"] = devices, controls
+    for k in ("demo", "demoData", "lang"):
+        if isinstance(pkg.get(k), dict):
+            out[k] = plain(pkg[k])
+    out["code"] = code
+    return out
+
+
 def check(pkg):
     """A clean copy of a shared item, or Bad with what's wrong."""
     if not isinstance(pkg, dict):
         raise Bad("That isn't a Countertop file.")
     kind = pkg.get("countertop")
     if kind not in KINDS:
-        raise Bad("That isn't a Countertop layout, theme or effect.")
+        raise Bad("That isn't a Countertop layout, theme, effect or tile.")
+    if kind == "tile" and pkg.get("format") is None:
+        pkg = dict(pkg, format=1)               # hand-written tile files often leave it out
     if not isinstance(pkg.get("format"), int) or not 1 <= pkg["format"] <= FORMAT:
         raise Bad("Unknown format %r (this gallery reads up to %d)." % (pkg.get("format"), FORMAT))
     name = text(pkg.get("name"), 60 if kind == "effect" else 80)
@@ -132,6 +332,13 @@ def check(pkg):
         raise Bad("It needs a name.")
     out = {"countertop": kind, "format": pkg["format"], "name": name, "description": text(pkg.get("description"), 500),
            "made": text(pkg.get("made"), 10)}
+    if kind == "tile":
+        name = text(pkg.get("name"), 60)
+        if not name:
+            raise Bad("It needs a name.")
+        out = check_tile(pkg)
+        out.update(format=pkg["format"], name=name, description=text(pkg.get("description"), 500))
+        return out
     if kind == "theme":
         values = clean_look(pkg.get("values"), "values")
         if not values:
@@ -184,6 +391,12 @@ def check(pkg):
                     elif isinstance(k, str) and re.match(r"^\w{1,40}$", k) and clean_setting(v):
                         cs[k] = v
                 o = {"type": t["type"], "settings": cs}
+                f = t.get("from")             # a community tile: where Countertop gets it (never its code)
+                if isinstance(f, dict) and isinstance(f.get("id"), str):
+                    if f["id"] != "tiles/" + t["type"] or not TILE_ID.match(t["type"]):
+                        raise Bad("A tile's 'from' should name the gallery tile it is (tiles/%s)." % t["type"])
+                    v = f.get("v")
+                    o["from"] = {"id": f["id"], "v": v if isinstance(v, int) and not isinstance(v, bool) and v >= 1 else 1}
                 if text(t.get("name"), 60):
                     o["name"] = text(t.get("name"), 60)
                 tiles.append(o)
@@ -225,8 +438,9 @@ def item_files():
 
 
 def load_item(kind, p):
-    if p.stat().st_size > MAX_BYTES:
-        raise Bad("bigger than %d KB" % (MAX_BYTES // 1024))
+    limit = MAX_TILE_BYTES if kind == "tile" else MAX_BYTES
+    if p.stat().st_size > limit:
+        raise Bad("bigger than %d KB" % (limit // 1024))
     pkg = json.loads(p.read_text(encoding="utf-8"))
     g = pkg.get("gallery")
     if not isinstance(g, dict) or not isinstance(g.get("author"), str) or not isinstance(g.get("version"), int):
@@ -234,22 +448,72 @@ def load_item(kind, p):
     clean = check(pkg)
     if clean["countertop"] != kind:
         raise Bad("is a %s but sits in %s/" % (clean["countertop"], KINDS[kind]))
-    if p.stem != slug(clean["name"]) and not p.stem.startswith(slug(clean["name"]) + "-"):
+    if kind == "tile":
+        if p.stem != clean["id"]:
+            raise Bad("file name should be its id: %s.countertop" % clean["id"])
+    elif p.stem != slug(clean["name"]) and not p.stem.startswith(slug(clean["name"]) + "-"):
         raise Bad("file name should come from its name: %s.countertop" % slug(clean["name"]))
+    if g["version"] < 1 or isinstance(g["version"], bool):
+        raise Bad("version should be 1 or more")
     clean["gallery"] = {"author": g["author"], "version": g["version"], "updated": text(g.get("updated"), 10)}
+    if kind == "tile":
+        clean["author"] = g["author"]
     return clean
+
+
+def shots():
+    """{tile id: path} for the screenshots beside tiles (items/tiles/<id>.png or .jpg)."""
+    out = {}
+    for p in sorted((ITEMS / "tiles").glob("*")) if (ITEMS / "tiles").is_dir() else []:
+        if p.suffix in (".png", ".jpg"):
+            out.setdefault(p.stem, []).append(p)
+    return out
+
+
+def check_shot(p):
+    if p.stat().st_size > MAX_SHOT_BYTES:
+        raise Bad("%s is bigger than %d KB" % (p.name, MAX_SHOT_BYTES // 1000))
+    head = p.read_bytes()[:8]
+    if (p.suffix == ".png") != (head == b"\x89PNG\r\n\x1a\n") or (p.suffix == ".jpg" and head[:3] != b"\xff\xd8\xff"):
+        raise Bad("%s isn't really a %s picture" % (p.name, p.suffix[1:].upper()))
+
+
+def tile_refs(clean):
+    """Gallery tiles a layout's boxes name with 'from'."""
+    return {t["from"]["id"] for pg in clean.get("pages", []) for b in pg["boxes"] for t in b["tiles"] if t.get("from")}
 
 
 def cmd_check():
     bad = 0
     n = 0
+    tiles, refs = set(), {}
     for kind, p in item_files():
         n += 1
         try:
-            load_item(kind, p)
+            clean = load_item(kind, p)
+            if kind == "tile":
+                tiles.add(clean["id"])
+            elif kind == "layout":
+                refs[p] = tile_refs(clean)
         except (Bad, ValueError) as e:
             bad += 1
             print("✗ %s: %s" % (p.relative_to(ROOT), e))
+    for p, ids in refs.items():
+        for gid in sorted(ids):
+            if gid[len("tiles/"):] not in tiles:
+                bad += 1
+                print("✗ %s: uses the community tile %s, which isn't in the gallery" % (p.relative_to(ROOT), gid))
+    for tid, files in shots().items():
+        for f in files:
+            try:
+                if tid not in tiles:
+                    raise Bad("%s has no tile %s.countertop beside it" % (f.name, tid))
+                check_shot(f)
+                if len(files) > 1:
+                    raise Bad("%s has more than one screenshot" % tid)
+            except Bad as e:
+                bad += 1
+                print("✗ %s: %s" % (f.relative_to(ROOT), e))
     revoked = json.loads((ROOT / "revoked.json").read_text())
     if not isinstance(revoked, list) or not all(isinstance(x, str) for x in revoked):
         bad += 1
@@ -262,6 +526,7 @@ def cmd_build(out):
     out = Path(out)
     (out / "items").mkdir(parents=True, exist_ok=True)
     items = []
+    pics = shots()
     for kind, p in item_files():
         clean = load_item(kind, p)
         g = clean.pop("gallery")
@@ -269,8 +534,14 @@ def cmd_build(out):
         dest = out / "items" / KINDS[kind]
         dest.mkdir(parents=True, exist_ok=True)
         (dest / p.name).write_text(json.dumps(clean, ensure_ascii=False, indent=1), encoding="utf-8")
-        items.append({"id": iid, "kind": kind, "name": clean["name"], "description": clean["description"], "author": g["author"],
-                      "version": g["version"], "updated": g["updated"], "file": "items/" + KINDS[kind] + "/" + p.name, "item": clean})
+        entry = {"id": iid, "kind": kind, "name": clean["name"], "description": clean["description"], "author": g["author"],
+                 "version": g["version"], "updated": g["updated"], "file": "items/" + KINDS[kind] + "/" + p.name, "item": clean}
+        if kind == "tile" and pics.get(p.stem):
+            pic = pics[p.stem][0]
+            check_shot(pic)
+            (dest / pic.name).write_bytes(pic.read_bytes())
+            entry["shot"] = "items/tiles/" + pic.name
+        items.append(entry)
     index = {"countertop": "gallery", "format": 1, "updated": datetime.date.today().isoformat(),
              "items": items, "revoked": json.loads((ROOT / "revoked.json").read_text())}
     (out / "index.json").write_text(json.dumps(index, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
@@ -314,25 +585,36 @@ def cmd_submit(result):
         kind = clean["countertop"]
         folder = ITEMS / KINDS[kind]
         folder.mkdir(parents=True, exist_ok=True)
-        base = slug(clean["name"])
+        for gid in sorted(tile_refs(clean)) if kind == "layout" else []:
+            if not (ITEMS / "tiles" / (gid[len("tiles/"):] + ".countertop")).is_file():
+                raise Bad("This layout uses the community tile %s, which isn't in the gallery. Submit the tile first, or take it out of the layout." % gid[len("tiles/"):])
+        base = clean["id"] if kind == "tile" else slug(clean["name"])
+        if kind == "tile" and "tiles/" + base in json.loads((ROOT / "revoked.json").read_text()):
+            raise Bad("A tile called %s was taken down from the gallery, so it can't be submitted again here. Open an issue to talk about it." % base)
         path = folder / (base + ".countertop")
         version = 1
         if path.exists():
             old = json.loads(path.read_text(encoding="utf-8")).get("gallery") or {}
             if old.get("author") == author:
                 version = int(old.get("version") or 1) + 1        # the author's update to their own item
+            elif kind == "tile":
+                raise Bad("There's already a tile with the id %s, by someone else. A tile's id is its name in Countertop, so pick a different id and submit again." % base)
             else:
                 i = 2
                 while (folder / ("%s-%d.countertop" % (base, i))).exists():
                     i += 1
                 path = folder / ("%s-%d.countertop" % (base, i))
+        clean.pop("author", None)
         clean["gallery"] = {"author": author, "version": version, "updated": datetime.date.today().isoformat()}
         data = json.dumps(clean, ensure_ascii=False, indent=1) + "\n"
-        if len(data.encode("utf-8")) > MAX_BYTES:
-            raise Bad("It's bigger than %d KB." % (MAX_BYTES // 1024))
+        limit = MAX_TILE_BYTES if kind == "tile" else MAX_BYTES
+        if len(data.encode("utf-8")) > limit:
+            raise Bad("It's bigger than %d KB." % (limit // 1024))
         path.write_text(data, encoding="utf-8")
         res.update(ok=True, path=str(path.relative_to(ROOT)), title="Add %s: %s%s" % (kind, clean["name"], " (version %d)" % version if version > 1 else ""),
-                   message="Thanks! It checks out: %s %s called **%s**. A pull request is open for review; once it's merged it shows up in Library → Community." % ("an" if kind == "effect" else "a", kind, clean["name"].replace("*", "")))
+                   message="Thanks! It checks out: %s %s called **%s**. A pull request is open for review%s; once it's merged it shows up in Library → Community." % (
+                       "an" if kind == "effect" else "a", kind, clean["name"].replace("*", ""),
+                       " (a tile runs its own code, so it's read through line by line before it can be merged, which can take a little longer)" if kind == "tile" else ""))
     except Bad as e:
         res["message"] = str(e)
     Path(result).write_text(json.dumps(res, ensure_ascii=False))
