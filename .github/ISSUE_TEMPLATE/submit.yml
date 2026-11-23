@@ -1,5 +1,5 @@
 name: Submit to the gallery
-description: Share a layout, theme or effect you made with everyone who uses Countertop.
+description: Share a layout, theme, effect or tile you made with everyone who uses Countertop.
 title: "Submit: "
 labels: ["submission"]
 body:
@@ -10,13 +10,14 @@ body:
         - a layout: Library → Share a layout
         - a theme: Library → Themes → your theme → Share
         - an effect you made: Library → Effects → your effect → Share
+        - a tile: paste the text of its `.countertop` file (`"countertop": "tile"`; see the [README](https://github.com/kizit/countertop-gallery#tiles) for what it needs). The form holds about 60 KB, so a larger tile goes in as a pull request instead
 
-        Paste the code below. It's checked right away, and a pull request opens for review. Once it's merged, it shows up in Library → Community.
+        Paste the code below. It's checked right away, and a pull request opens for review (a tile's code is read through line by line first). Once it's merged, it shows up in Library → Community.
   - type: textarea
     id: code
     attributes:
       label: Share code
-      description: Starts with CT1. You can also paste the text of a .countertop file.
+      description: Starts with CT1. You can also paste the text of a .countertop file, which is how a tile goes in.
       render: text
     validations:
       required: true

@@ -50,6 +50,12 @@ jobs:
           if gh pr view "$BRANCH" --repo "$REPO" >/dev/null 2>&1; then
             gh issue comment "$NUMBER" --repo "$REPO" --body "Updated the pull request with your changes."
           else
-            gh pr create --repo "$REPO" --head "$BRANCH" --base main --title "$(jq -r .title "$R")" --body "Closes #$NUMBER. Submitted by @$AUTHOR. Check the preview in Countertop: copy the code from the issue into Library → Import a file."
+            BODY="Closes #$NUMBER. Submitted by @$AUTHOR. Check the preview in Countertop: copy the code from the issue into Library → Import a file."
+            case "$(jq -r .path "$R")" in items/tiles/*)
+              BODY="Closes #$NUMBER. Submitted by @$AUTHOR.
+
+          This tile runs its own code, so read the whole file before merging. Look for: addresses other than its declared hosts, anything that tries to leave its frame (navigating, opening windows, forms), endless loops, code that is hidden or obfuscated, and a description that doesn't match what the code does. The permissions Countertop will show are listed in the file's feeds, hosts, devices, controls and secret settings." ;;
+            esac
+            gh pr create --repo "$REPO" --head "$BRANCH" --base main --title "$(jq -r .title "$R")" --body "$BODY"
             gh issue comment "$NUMBER" --repo "$REPO" --body "$MSG"
           fi
