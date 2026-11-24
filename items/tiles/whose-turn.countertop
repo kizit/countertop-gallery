@@ -1,0 +1,43 @@
+{
+ "countertop": "tile",
+ "format": 1,
+ "id": "whose-turn",
+ "name": "Whose turn?",
+ "description": "Whose turn it is for dishes, bath time or the front seat. Tap when done to pass it to the next person.",
+ "size": [
+  12,
+  8,
+  8,
+  6
+ ],
+ "uses": [
+  "store"
+ ],
+ "feeds": [],
+ "hosts": [],
+ "taps": true,
+ "every": 0,
+ "settings": {
+  "title": {
+   "type": "text",
+   "label": "What it's for",
+   "default": "Dishes"
+  },
+  "names": {
+   "type": "list",
+   "label": "Names",
+   "help": "One per line, in the order they take turns",
+   "placeholder": "Alex",
+   "default": [
+    "Alex",
+    "Sam"
+   ]
+  }
+ },
+ "code": "Tile(\"whose-turn\", {\n  cls: \"wt\",\n  css: \".wt{display:flex;flex-direction:column;justify-content:center;gap:.3em;container-type:size}\" +\n    \".wt .h{font-size:clamp(13px,6.5cqmin,22px);letter-spacing:.08em;text-transform:uppercase;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\" +\n    \".wt .v{font-size:clamp(24px,24cqmin,84px);font-weight:600;line-height:1.05;color:var(--accent);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}\" +\n    \".wt .s{font-size:clamp(14px,7.5cqmin,24px);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\" +\n    \".wt .undo{align-self:flex-start;font-size:clamp(14px,7cqmin,22px);padding:.3em .8em;border-radius:999px;background:var(--line);color:var(--fg)}\",\n  render(el){\n    const t = (s, v) => this.t(s, v), esc = s => this.esc(s);\n    const names = (this.s.names || []).map(x => String(x).trim()).filter(Boolean);\n    if (!names.length){ el.innerHTML = '<div class=\"v\">' + esc(t(\"Add names in this tile's settings\")) + '</div>'; return; }\n    const d = this.store.get(), n = names.length, i = ((+d.i || 0) % n + n) % n;\n    const ago = ms => { const k = Math.floor((Date.now() - ms) / 864e5); return k < 1 ? t(\"today\") : k === 1 ? t(\"yesterday\") : t(\"{n} days ago\", {n: k}); };\n    const h = el.clientHeight;\n    let out = '<div class=\"h\">' + esc(this.s.title || this.name) + '</div><div class=\"v\">' + esc(names[i]) + '</div>';\n    if (h >= 120) out += '<div class=\"s\">' + esc(t(\"Tap when done\")) + '</div>';\n    if (h >= 170 && d.at) out += '<div class=\"s\">' + esc(t(\"Last: {who} {when}\", {who: names[(i - 1 + n) % n], when: ago(d.at)})) + '</div>';\n    if (h >= 210 && d.prev != null && d.at && Date.now() - d.at < 36e5) out += '<div class=\"undo\">' + esc(t(\"Undo\")) + '</div>';\n    el.innerHTML = out;\n  },\n  tap(e, el){\n    const d = this.store.get(), n = (this.s.names || []).map(x => String(x).trim()).filter(Boolean).length;\n    if (!n) return;\n    const i = ((+d.i || 0) % n + n) % n;\n    if (e && e.target && e.target.closest && e.target.closest(\".undo\")){\n      if (d.prev == null) return;\n      this.store.change([{op: \"set\", key: \"i\", value: +d.prev}, {op: \"set\", key: \"prev\", value: null}, {op: \"set\", key: \"at\", value: null}]);\n      return;\n    }\n    this.store.change([{op: \"set\", key: \"i\", value: (i + 1) % n}, {op: \"set\", key: \"prev\", value: i}, {op: \"set\", key: \"at\", value: Date.now()}]);\n  }\n});\n",
+ "gallery": {
+  "author": "kizit",
+  "version": 1,
+  "updated": "2026-11-24"
+ }
+}
