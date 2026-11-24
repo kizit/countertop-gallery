@@ -1,0 +1,146 @@
+{
+ "countertop": "tile",
+ "format": 1,
+ "id": "bin-night",
+ "name": "Bin night",
+ "description": "Which bins go out and when. Weekly or every-other-week pickups for up to three bins, with the next one first.",
+ "size": [
+  12,
+  8,
+  8,
+  6
+ ],
+ "uses": [],
+ "feeds": [],
+ "hosts": [],
+ "taps": false,
+ "every": 600,
+ "settings": {
+  "aName": {
+   "type": "text",
+   "label": "Bin A name",
+   "default": "Trash"
+  },
+  "aDay": {
+   "type": "choice",
+   "label": "Bin A pickup day",
+   "choices": [
+    "Not used",
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday"
+   ],
+   "default": "Thursday"
+  },
+  "aEvery": {
+   "type": "choice",
+   "label": "Bin A how often",
+   "choices": [
+    "Every week",
+    "Every 2 weeks"
+   ],
+   "default": "Every week"
+  },
+  "aFrom": {
+   "type": "text",
+   "label": "Bin A: a pickup date (YYYY-MM-DD)",
+   "help": "Only for every 2 weeks: any one day this bin was or will be picked up",
+   "default": ""
+  },
+  "aColor": {
+   "type": "color",
+   "label": "Bin A color",
+   "default": "#6b7280"
+  },
+  "bName": {
+   "type": "text",
+   "label": "Bin B name",
+   "default": "Recycling"
+  },
+  "bDay": {
+   "type": "choice",
+   "label": "Bin B pickup day",
+   "choices": [
+    "Not used",
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday"
+   ],
+   "default": "Thursday"
+  },
+  "bEvery": {
+   "type": "choice",
+   "label": "Bin B how often",
+   "choices": [
+    "Every week",
+    "Every 2 weeks"
+   ],
+   "default": "Every 2 weeks"
+  },
+  "bFrom": {
+   "type": "text",
+   "label": "Bin B: a pickup date (YYYY-MM-DD)",
+   "help": "Only for every 2 weeks: any one day this bin was or will be picked up",
+   "default": ""
+  },
+  "bColor": {
+   "type": "color",
+   "label": "Bin B color",
+   "default": "#3b82f6"
+  },
+  "cName": {
+   "type": "text",
+   "label": "Bin C name",
+   "default": "Yard waste"
+  },
+  "cDay": {
+   "type": "choice",
+   "label": "Bin C pickup day",
+   "choices": [
+    "Not used",
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday"
+   ],
+   "default": "Not used"
+  },
+  "cEvery": {
+   "type": "choice",
+   "label": "Bin C how often",
+   "choices": [
+    "Every week",
+    "Every 2 weeks"
+   ],
+   "default": "Every week"
+  },
+  "cFrom": {
+   "type": "text",
+   "label": "Bin C: a pickup date (YYYY-MM-DD)",
+   "help": "Only for every 2 weeks: any one day this bin was or will be picked up",
+   "default": ""
+  },
+  "cColor": {
+   "type": "color",
+   "label": "Bin C color",
+   "default": "#22c55e"
+  }
+ },
+ "code": "Tile(\"bin-night\", {\n  cls: \"bn\",\n  every: 600,\n  css: \".bn{display:flex;flex-direction:column;justify-content:center;gap:.3em;container-type:size}\" +\n    \".bn .v{font-size:clamp(20px,15cqmin,52px);font-weight:600;line-height:1.1;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}\" +\n    \".bn.tonight .v{color:var(--accent)}\" +\n    \".bn .r{display:flex;align-items:center;gap:.5em;font-size:clamp(14px,8cqmin,26px);min-width:0}\" +\n    \".bn .r i{flex:none;width:.8em;height:.8em;border-radius:50%;background:var(--c)}\" +\n    \".bn .r b{font-weight:500;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\" +\n    \".bn .r span{flex:none;color:var(--dim)}\",\n  render(el){\n    const t = (s, v) => this.t(s, v), esc = s => this.esc(s), S = this.s;\n    const DAYS = [\"Sunday\", \"Monday\", \"Tuesday\", \"Wednesday\", \"Thursday\", \"Friday\", \"Saturday\"];\n    const DAY = 86400000, today = new Date(); today.setHours(0, 0, 0, 0);\n    const bins = [];\n    for (const k of [\"a\", \"b\", \"c\"]){\n      const name = String(S[k + \"Name\"] || \"\").trim(), d = DAYS.indexOf(S[k + \"Day\"]);\n      if (!name || d < 0) continue;\n      let when = new Date(today); when.setDate(when.getDate() + (d - when.getDay() + 7) % 7);\n      if (/2/.test(S[k + \"Every\"] || \"\")){\n        const ref = /^\\d{4}-\\d\\d-\\d\\d$/.test(String(S[k + \"From\"] || \"\").trim()) ? new Date(S[k + \"From\"].trim() + \"T00:00:00\") : null;\n        if (ref && !isNaN(ref)){\n          const weeks = Math.round((when - ref) / (7 * DAY));\n          if (weeks % 2) when = new Date(when.getTime() + 7 * DAY);\n          when.setHours(0, 0, 0, 0);\n        }\n      }\n      bins.push({name, when, days: Math.round((when - today) / DAY), color: S[k + \"Color\"] || \"currentColor\"});\n    }\n    if (!bins.length){ el.innerHTML = '<div class=\"v\">' + esc(t(\"Pick a pickup day in this tile's settings\")) + '</div>'; return; }\n    bins.sort((x, y) => x.days - y.days);\n    const first = bins[0].days, group = bins.filter(b => b.days === first);\n    const dayName = b => b.when.toLocaleDateString([], {weekday: \"long\"});\n    const when = n => n === 0 ? t(\"Today\") : n === 1 ? t(\"Tomorrow\") : t(\"in {n} days\", {n});\n    const night = first <= 1 && (first === 0 || new Date().getHours() >= 12);\n    const head = first === 0 ? t(\"Pickup today\") : first === 1 ? t(\"Bin night\") : t(\"Next pickup\");\n    const h = el.clientHeight, rowH = Math.max(24, Math.round(Math.min(el.clientWidth, h * 1.6) / 8));\n    let rows = bins;\n    const room = Math.max(1, Math.floor((h - h * 0.34 - 12) / (rowH + 6)));\n    rows = (h < 130 ? group : bins).slice(0, room);\n    el.className = (el.className || \"\").replace(/\\btonight\\b/g, \"\").trim() + (night ? \" tonight\" : \"\");\n    el.innerHTML = '<div class=\"v\">' + esc(head) + '</div>' + rows.map(b =>\n      '<div class=\"r\"><i style=\"--c:' + esc(b.color) + '\"></i><b>' + esc(b.name) + '</b><span>' + esc(rows.length === 1 && h < 130 ? when(b.days) : b.days <= 1 ? when(b.days) : dayName(b)) + '</span></div>').join(\"\");\n  }\n});\n",
+ "gallery": {
+  "author": "kizit",
+  "version": 1,
+  "updated": "2026-11-24"
+ }
+}
