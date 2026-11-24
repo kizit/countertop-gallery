@@ -6,11 +6,11 @@ body:
   - type: markdown
     attributes:
       value: |
-        In Countertop, open what you want to share and press **Share**, then **Copy share code**:
+        In Countertop, open what you want to share and press **Submit to the gallery** on its Share screen, which fills in the code below:
         - a layout: Library → Share a layout
-        - a theme: Library → Themes → your theme → Share
-        - an effect you made: Library → Effects → your effect → Share
-        - a tile: paste the text of its `.countertop` file (`"countertop": "tile"`; see the [README](https://github.com/kizit/countertop-gallery#tiles) for what it needs). The form holds about 60 KB, so a larger tile goes in as a pull request instead
+        - a theme: Library → Themes → open your theme → Share
+        - an effect you made: Library → Effects → open your effect → Share
+        - a tile: Library → New tile (Tile Studio) → your tile → Submit to the gallery. You can also paste the text of its `.countertop` file (`"countertop": "tile"`; see the [README](https://github.com/kizit/countertop-gallery#tiles) for what it needs). The form holds about 60 KB, so a larger tile goes in as a pull request instead
 
         Paste the code below. It's checked right away, and a pull request opens for review (a tile's code is read through line by line first). Once it's merged, it shows up in Library → Community.
   - type: textarea

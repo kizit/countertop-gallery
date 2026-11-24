@@ -6,12 +6,12 @@ In Countertop, open **Library → Community** to browse them. Nothing from here 
 
 ## Share something you made
 
-1. In Countertop, open what you want to share and press **Share**, then **Copy share code**:
+1. In Countertop, open what you want to share:
    - a layout: Library → Share a layout
-   - a theme: Library → Themes → your theme → Share
-   - an effect you made: Library → Effects → your effect → Share
-   - a tile: paste the text of its `.countertop` file (see *Tiles* below)
-2. [Open a submission](../../issues/new?template=submit.yml) and paste the code.
+   - a theme: Library → Themes → open your theme → Share
+   - an effect you made: Library → Effects → open your effect → Share
+   - a tile: Library → New tile (Tile Studio) → open your tile → Submit to the gallery
+2. On a Share screen, press **Submit to the gallery**. It opens the [submission form](../../issues/new?template=submit.yml) with the share code filled in (or copied, if it's too long for an address; paste it into the form). You can also copy the code yourself and paste it into the form, or use **Library → Browse community → Submit yours**.
 
 It's checked right away. If something's wrong, a comment on the issue says what, and you can edit the issue to try again. Otherwise a pull request opens. Once it's reviewed and merged, it shows up in Community, usually within a few minutes.
 
