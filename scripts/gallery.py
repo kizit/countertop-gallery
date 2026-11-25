@@ -39,11 +39,24 @@ LOOK = {
     "opacity": ("int", 10, 100),
     "textScale": ("int", 80, 140),
     "titles": ("bool",),
-    "bg": ("choice", ["Sky", "Color", "Photos"]),
+    "bg": ("choice", ["Sky", "Color", "Gradient", "Texture", "Photos"]),      # "Wallpaper" stays on the maker's Countertop, so it isn't shared
     "bgColor": ("color",),
     "dim": ("int", 0, 80),
     "fx": ("choice", ["On", "Off"]),
+    "textColor": ("color", True),                                          # True: may be empty (automatic)
+    "bigColor": ("color", True),
+    "themeWins": ("bool",),
+    "fontBody": ("choice", ["System", "Nunito", "Outfit", "Space Grotesk", "Fraunces"]),
+    "fontDisplay": ("choice", ["Default", "System", "Outfit", "Bebas Neue", "DM Serif Display", "Fraunces", "JetBrains Mono", "Nunito", "Space Grotesk"]),
+    "surface": ("choice", ["Classic", "Flat", "Soft", "Outline", "Glass"]),
+    "shape": ("choice", ["Square", "Rounded", "Soft"]),
+    "density": ("choice", ["Compact", "Normal", "Roomy"]),
+    "gradient": ("choice", ["Dusk", "Ember", "Forest", "Ocean", "Slate", "Sand", "Mist", "Blush"]),
+    "texture": ("choice", ["Paper", "Linen", "Grid", "Dots", "Stripes"]),
+    "tint": ("color", True),
+    "tintAmt": ("int", 0, 60),
 }
+CATEGORIES = ["Minimalist", "Cozy", "Retro", "Seasonal", "Nature", "Futuristic", "High Contrast"]
 MOTIONS = ["fall", "rise", "fly", "flutter"]
 SIZES = ["Small", "Medium", "Big"]
 SPEEDS = ["Slow", "Normal", "Fast"]
@@ -85,7 +98,7 @@ def clean_look(v, where):
         if not spec:
             continue                                   # settings this version doesn't know: left out, as the app does
         t = spec[0]
-        ok = (t == "choice" and x in spec[1]) or (t == "color" and isinstance(x, str) and COLOR.match(x)) or \
+        ok = (t == "choice" and x in spec[1]) or (t == "color" and isinstance(x, str) and (COLOR.match(x) or (x == "" and len(spec) > 1))) or \
              (t == "bool" and isinstance(x, bool)) or (t == "int" and isinstance(x, (int, float)) and not isinstance(x, bool))
         if not ok:
             raise Bad("%s: %r isn't a valid value for %s" % (where, x, k))
@@ -344,6 +357,8 @@ def check(pkg):
         if not values:
             raise Bad("This theme has no colors or settings in it.")
         out["values"] = values
+        if pkg.get("category") in CATEGORIES:
+            out["category"] = pkg["category"]            # optional: one of the gallery's theme categories
     elif kind == "effect":
         e = pkg.get("effect")
         if not isinstance(e, dict):
@@ -536,6 +551,8 @@ def cmd_build(out):
         (dest / p.name).write_text(json.dumps(clean, ensure_ascii=False, indent=1), encoding="utf-8")
         entry = {"id": iid, "kind": kind, "name": clean["name"], "description": clean["description"], "author": g["author"],
                  "version": g["version"], "updated": g["updated"], "file": "items/" + KINDS[kind] + "/" + p.name, "item": clean}
+        if clean.get("category"):
+            entry["category"] = clean["category"]
         if kind == "tile" and pics.get(p.stem):
             pic = pics[p.stem][0]
             check_shot(pic)

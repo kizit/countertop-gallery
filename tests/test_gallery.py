@@ -48,6 +48,22 @@ class Check(unittest.TestCase):
     def test_theme_keeps_known_settings(self):
         self.assertEqual(g.check(THEME)["values"], {"tiles": "See-through", "opacity": 45})
 
+    def test_theme_new_settings_and_category(self):
+        v = {"fontBody": "Nunito", "fontDisplay": "Bebas Neue", "surface": "Glass", "shape": "Soft", "density": "Roomy", "bg": "Gradient",
+             "gradient": "Forest", "texture": "Dots", "textColor": "", "bigColor": "#ffcc00", "tint": "", "tintAmt": 99, "themeWins": True,
+             "wallpaper": "w-abc", "album": "family"}
+        out = g.check(dict(THEME, values=v, category="Cozy"))
+        self.assertEqual(out["category"], "Cozy")
+        self.assertEqual(out["values"]["tintAmt"], 60)
+        self.assertEqual(out["values"]["bigColor"], "#ffcc00")
+        self.assertNotIn("wallpaper", out["values"])          # stays on the maker's Countertop
+        self.assertNotIn("album", out["values"])
+        self.assertNotIn("category", g.check(dict(THEME, category="Spicy")))
+        self.assertNotIn("category", g.check(THEME))
+        for bad in ({"bg": "Wallpaper"}, {"surface": "url(x)"}, {"bigColor": "red"}, {"fontBody": "Bebas Neue"}):
+            with self.assertRaises(g.Bad):
+                g.check(dict(THEME, values=bad))
+
     def test_theme_bad_value(self):
         with self.assertRaises(g.Bad):
             g.check(dict(THEME, values={"accent": "url(x)"}))

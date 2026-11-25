@@ -20,7 +20,7 @@ To update something you shared, submit it again under the same name. It replaces
 ## What can go in
 
 - **Layouts**: which tiles go where, and their settings. Your calendars, lists, teams, photos, Home Assistant devices and personal text are left out when Countertop makes a share code. Layouts with a *Your own tile* (one that runs its own code) can't be submitted; publish the tile as a community tile instead. A layout can use community tiles from this gallery: the tile has to be here first, and people who download the layout are offered the tile too.
-- **Themes**: colors, background, tiles, text size and dimming.
+- **Themes**: colors, fonts, tile edges and corners, spacing, backgrounds, text size and dimming. A theme can name one category (Minimalist, Cozy, Retro, Seasonal, Nature, Futuristic or High Contrast); a wallpaper you uploaded never travels with it.
 - **Effects**: up to 8 emoji and how they move (fall, float up, fly across or wander), with a size, a speed and an optional season. Effects are plain data: there's no code in them.
 - **Tiles**: a tile with its own code. See below.
 
