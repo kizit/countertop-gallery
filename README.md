@@ -1,6 +1,6 @@
 # Countertop gallery
 
-Layouts, themes, effects and tiles made by people who use [Countertop](https://github.com/kizit/countertop), the kitchen dashboard.
+Layouts, themes, effects and tiles made by people who use [Countertop](https://github.com/kizit/countertop), the home dashboard.
 
 In Countertop, open **Library → Community** to browse them. Nothing from here goes into your own Library until you press **Download**. A downloaded item gets a note when its author ships a new version, and you can remove it any time.
 
